@@ -21,15 +21,27 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
 
+      - name: Check SDK
+        shell: bash
+        run: |
+          echo "SDK: $ANDROID_HOME"
+          ls -la "$ANDROID_HOME/cmdline-tools/"
+          ls -la "$ANDROID_HOME/cmdline-tools/latest/bin/"
+
       - name: Accept SDK Licenses
         shell: bash
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          set -e
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          for i in {1..20}; do
+            echo "y"
+          done | "$SDKMANAGER" --licenses
 
       - name: Install Android Components
         shell: bash
         run: |
-          sdkmanager \
+          sdkmanager --install \
             "platform-tools" \
             "emulator" \
             "platforms;android-35" \
@@ -43,7 +55,7 @@ jobs:
             -k "system-images;android-35;google_apis;x86_64" \
             -d pixel_2
 
-      - name: Start Emulator
+      - name: Start Android Emulator
         shell: bash
         run: |
           nohup emulator \
@@ -54,43 +66,53 @@ jobs:
             -gpu swiftshader_indirect \
             -memory 4096 \
             -cores 2 \
-            > emulator.log 2>&1 &
+            > "$RUNNER_TEMP/emulator.log" 2>&1 &
 
-      - name: Wait for Android
+      - name: Wait for Android Boot
         shell: bash
         run: |
           adb wait-for-device
 
+          BOOT=""
           for i in {1..60}; do
             BOOT=$(adb shell getprop sys.boot_completed | tr -d '\r')
+
             if [ "$BOOT" = "1" ]; then
               echo "Android started successfully"
-              exit 0
+              break
             fi
+
             sleep 5
           done
 
-          cat emulator.log
-          exit 1
+          if [ "$BOOT" != "1" ]; then
+            echo "Android boot failed"
+            cat "$RUNNER_TEMP/emulator.log"
+            exit 1
+          fi
 
-      - name: Check Android
+      - name: Android Information
+        shell: bash
         run: |
           adb devices
           adb shell getprop ro.build.version.release
           adb shell getprop ro.product.model
+          adb shell df -h
 
-      - name: Keep Running
+      - name: Keep Android Running
+        shell: bash
         run: |
           for i in {1..65}; do
             echo "Android running: $i"
+            adb shell getprop sys.boot_completed
             sleep 300
           done
 
-      - name: Upload Logs
+      - name: Upload Android Logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-logs
-          path: emulator.log
-          if-no-files-found: ignore
+          name: android-emulator-logs
+          path: ${{ runner.temp }}/emulator.log
+          if-no-files-found: warn
           retention-days: 1
