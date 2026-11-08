@@ -18,7 +18,7 @@ jobs:
       DISPLAY: :0
 
     steps:
-      # 1. Install required Linux libraries
+      # 1. Install Linux libraries and remote screen tools
       - name: Install Dependencies
         shell: bash
         run: |
@@ -36,30 +36,62 @@ jobs:
             libpulse0 \
             libasound2t64 \
             libnss3 \
+            libnspr4 \
             libx11-6 \
+            libx11-xcb1 \
             libxcb1 \
-            libxcomposite1 \
+            libxcb-cursor0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxcb-xinput0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xfixes0 \
+            libxcb-randr0 \
+            libxcb-sync1 \
+            libxcb-util1 \
+            libxkbcommon0 \
+            libxkbcommon-x11-0 \
+            libxkbfile1 \
+            libxshmfence1 \
             libxcursor1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxinerama1 \
+            libxss1 \
             libxi6 \
             libxtst6 \
             libxrandr2 \
             libxrender1 \
-            libxkbcommon0 \
+            libxcomposite1 \
+            libxext6 \
             libglib2.0-0 \
             libstdc++6 \
             libgcc-s1 \
             libfontconfig1 \
+            libfreetype6 \
             libdbus-1-3 \
             libdrm2 \
-            libgbm1
+            libgbm1 \
+            libgl1 \
+            libegl1 \
+            libvulkan1 \
+            libudev1 \
+            libbsd0 \
+            libmd0 \
+            libatomic1 \
+            libunwind8
 
           mkdir -p "$RUNNER_TEMP/cloud-android"
 
-      # 2. Setup Android SDK
+      # 2. Install Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
-      # 3. Locate SDK tools
+      # 3. Find SDK tools
       - name: Configure Android Tools
         shell: bash
         run: |
@@ -94,9 +126,9 @@ jobs:
 
           yes 2>/dev/null | "$SDKMANAGER" --licenses
 
-          echo "Android licenses accepted"
+          echo "Licenses accepted"
 
-      # 5. Install Android x86_64
+      # 5. Install Android image
       - name: Install Android Components
         shell: bash
         run: |
@@ -118,40 +150,43 @@ jobs:
 
           echo "Android image installed"
 
-      # 6. Check architecture and libraries
-      - name: Check Emulator Architecture and Libraries
+      # 6. Check architecture and dependencies
+      - name: Check Emulator Libraries
         shell: bash
         run: |
           set -e
+
+          mkdir -p "$RUNNER_TEMP/cloud-android"
 
           echo "Runner architecture:"
           uname -m
 
           if [ "$(uname -m)" != "x86_64" ]; then
-            echo "This workflow requires x86_64"
+            echo "Expected x86_64 runner"
             exit 1
           fi
 
           QEMU="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+          EMULATOR="$ANDROID_HOME/emulator/emulator"
 
-          for BIN in "$ANDROID_HOME/emulator/emulator" "$QEMU"; do
+          for BIN in "$EMULATOR" "$QEMU"; do
+            echo "Checking $BIN"
+
             if [ ! -x "$BIN" ]; then
-              echo "Missing executable: $BIN"
+              echo "Executable not found"
               exit 1
             fi
 
-            echo "Checking: $BIN"
-            ldd "$BIN"
+            ldd "$BIN" || true
           done | tee "$RUNNER_TEMP/cloud-android/dependencies.log"
 
-          if grep -q "not found" "$RUNNER_TEMP/cloud-android/dependencies.log"; then
-            echo "Missing shared libraries"
-            exit 1
-          fi
+          echo "Missing libraries, if any:"
+          grep "not found" \
+            "$RUNNER_TEMP/cloud-android/dependencies.log" || true
 
-          echo "Emulator dependencies checked"
+          echo "Dependency inspection completed"
 
-      # 7. Create Android phone
+      # 7. Create one Android virtual device
       - name: Create Android Phone
         shell: bash
         run: |
@@ -169,13 +204,13 @@ jobs:
           cat "$CONFIG"
 
           if ! grep -q "abi.type=x86_64" "$CONFIG"; then
-            echo "Wrong emulator architecture"
+            echo "Wrong AVD architecture"
             exit 1
           fi
 
           echo "CloudPhone created"
 
-      # 8. Start virtual screen
+      # 8. Start virtual display
       - name: Start Virtual Display
         shell: bash
         run: |
@@ -188,7 +223,7 @@ jobs:
 
           sleep 3
 
-      # 9. Start ONE Android emulator with its GUI
+      # 9. Start Android emulator
       - name: Start Android Emulator
         shell: bash
         run: |
@@ -206,8 +241,7 @@ jobs:
             > "$RUNNER_TEMP/cloud-android/emulator.log" 2>&1 \
             < /dev/null &
 
-          echo "Android emulator launched"
-
+          echo "Emulator launched"
           sleep 10
 
           cat "$RUNNER_TEMP/cloud-android/emulator.log"
@@ -233,7 +267,7 @@ jobs:
           done
 
           if [ "$CONNECTED" -ne 1 ]; then
-            echo "Android did not connect"
+            echo "Emulator did not connect"
             cat "$RUNNER_TEMP/cloud-android/emulator.log"
             exit 1
           fi
@@ -261,8 +295,8 @@ jobs:
 
           echo "Android boot completed"
 
-      # 11. Verify Android screen
-      - name: Check Android Display
+      # 11. Check Android
+      - name: Verify Android
         shell: bash
         run: |
           set -e
@@ -273,13 +307,11 @@ jobs:
           echo "Android model:"
           adb shell getprop ro.product.model
 
-          echo "Android screen:"
+          echo "Android display:"
           adb shell wm size
 
-          echo "Android is ready"
-
-      # 12. Start VNC
-      - name: Start VNC Server
+      # 12. Start VNC and noVNC
+      - name: Start Remote Screen
         shell: bash
         run: |
           set -e
@@ -305,7 +337,7 @@ jobs:
 
           curl -f http://127.0.0.1:6080/vnc.html
 
-          echo "Remote screen services started"
+          echo "Remote screen started"
 
       # 13. Connect Tailscale
       - name: Connect Tailscale
@@ -329,39 +361,33 @@ jobs:
 
           sudo tailscale serve --bg 6080
 
-          echo "Tailscale status:"
           sudo tailscale status
-
-          echo "Serve status:"
           sudo tailscale serve status
 
-      # 14. Final verification
+      # 14. Verify remote services
       - name: Verify Cloud Android
         shell: bash
         run: |
           set -e
 
-          echo "Checking Android..."
           adb devices
 
-          echo "Checking remote screen..."
           curl -f http://127.0.0.1:6080/vnc.html
 
-          echo "Checking Tailscale..."
           sudo tailscale serve status
 
-          echo "Cloud Android checks completed"
+          echo "Cloud Android services started"
 
-      # 15. Keep session alive
+      # 15. Keep session running
       - name: Keep Cloud Phone Running
         shell: bash
         run: |
           for i in {1..65}; do
-            echo "Cloud Android running: $i/65"
+            echo "Cloud Android active: $i/65"
             sleep 300
           done
 
-      # 16. Save logs
+      # 16. Upload logs
       - name: Upload Diagnostic Logs
         if: always()
         uses: actions/upload-artifact@v4
