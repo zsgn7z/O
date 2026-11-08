@@ -1,0 +1,86 @@
+
+name: Android Virtual Device
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android Components
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "emulator" \
+            "platforms;android-35" \
+            "system-images;android-35;google_apis;x86_64"
+
+      - name: Create Android Device
+        run: |
+          echo "no" | avdmanager create avd \
+            -n AndroidDevice \
+            -k "system-images;android-35;google_apis;x86_64" \
+            -d pixel_2
+
+      - name: Start Emulator
+        run: |
+          nohup emulator \
+            -avd AndroidDevice \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            -memory 4096 \
+            -cores 2 \
+            > emulator.log 2>&1 &
+
+      - name: Wait for Android Boot
+        run: |
+          adb wait-for-device
+
+          for i in {1..60}; do
+            BOOT=$(adb shell getprop sys.boot_completed | tr -d '\r')
+            if [ "$BOOT" = "1" ]; then
+              echo "Android started successfully"
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$BOOT" != "1" ]; then
+            echo "Android boot failed"
+            exit 1
+          fi
+
+      - name: Android Information
+        run: |
+          adb shell getprop ro.build.version.release
+          adb shell getprop ro.product.model
+          adb shell df -h
+          adb devices
+
+      - name: Keep Android Running
+        run: |
+          for i in {1..65}; do
+            echo "Android is running - $i"
+            adb shell getprop sys.boot_completed
+            sleep 300
+          done
+
+      - name: Save Emulator Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-logs
+          path: emulator.log
+          if-no-files-found: ignore
+          retention-days: 1
