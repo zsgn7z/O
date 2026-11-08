@@ -18,90 +18,39 @@ jobs:
       DISPLAY: :0
 
     steps:
-      # 1. Install Linux libraries and remote screen tools
       - name: Install Dependencies
         shell: bash
         run: |
           set -e
-
           sudo apt-get update
-
           sudo apt-get install -y \
-            xvfb \
-            x11vnc \
-            novnc \
-            websockify \
-            curl \
-            wget \
-            libpulse0 \
-            libasound2t64 \
-            libnss3 \
-            libnspr4 \
-            libx11-6 \
-            libx11-xcb1 \
-            libxcb1 \
-            libxcb-cursor0 \
-            libxcb-xinerama0 \
-            libxcb-xkb1 \
-            libxcb-xinput0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-render-util0 \
-            libxcb-shape0 \
-            libxcb-xfixes0 \
-            libxcb-randr0 \
-            libxcb-sync1 \
-            libxcb-util1 \
-            libxkbcommon0 \
-            libxkbcommon-x11-0 \
-            libxkbfile1 \
-            libxshmfence1 \
-            libxcursor1 \
-            libxdamage1 \
-            libxfixes3 \
-            libxinerama1 \
-            libxss1 \
-            libxi6 \
-            libxtst6 \
-            libxrandr2 \
-            libxrender1 \
-            libxcomposite1 \
-            libxext6 \
-            libglib2.0-0 \
-            libstdc++6 \
-            libgcc-s1 \
-            libfontconfig1 \
-            libfreetype6 \
-            libdbus-1-3 \
-            libdrm2 \
-            libgbm1 \
-            libgl1 \
-            libegl1 \
-            libvulkan1 \
-            libudev1 \
-            libbsd0 \
-            libmd0 \
-            libatomic1 \
-            libunwind8
+            xvfb x11vnc novnc websockify curl wget \
+            libpulse0 libasound2t64 libnss3 libnspr4 \
+            libx11-6 libx11-xcb1 libxcb1 libxcb-cursor0 \
+            libxcb-xinerama0 libxcb-xkb1 libxcb-xinput0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 \
+            libxcb-randr0 libxcb-sync1 libxcb-util1 \
+            libxkbcommon0 libxkbcommon-x11-0 libxkbfile1 \
+            libxshmfence1 libxcursor1 libxdamage1 libxfixes3 \
+            libxinerama1 libxss1 libxi6 libxtst6 libxrandr2 \
+            libxrender1 libxcomposite1 libxext6 libglib2.0-0 \
+            libstdc++6 libgcc-s1 libfontconfig1 libfreetype6 \
+            libdbus-1-3 libdrm2 libgbm1 libgl1 libegl1 \
+            libvulkan1 libudev1 libbsd0 libmd0 libatomic1 libunwind8
 
           mkdir -p "$RUNNER_TEMP/cloud-android"
 
-      # 2. Install Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
-      # 3. Find SDK tools
       - name: Configure Android Tools
         shell: bash
         run: |
           set -e
 
-          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-            -type f -name sdkmanager | sort -V | tail -n 1)
-
-          AVDMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
-            -type f -name avdmanager | sort -V | tail -n 1)
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)
+          AVDMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name avdmanager | sort -V | tail -n 1)
 
           if [ -z "$SDKMANAGER" ] || [ -z "$AVDMANAGER" ]; then
             echo "Android SDK tools not found"
@@ -111,24 +60,16 @@ jobs:
 
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
           echo "AVDMANAGER=$AVDMANAGER" >> "$GITHUB_ENV"
-
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
 
-          echo "SDK tools found"
-
-      # 4. Accept licenses
       - name: Accept Android Licenses
         shell: bash
         run: |
           set -e
           set +o pipefail
-
           yes 2>/dev/null | "$SDKMANAGER" --licenses
 
-          echo "Licenses accepted"
-
-      # 5. Install Android image
       - name: Install Android Components
         shell: bash
         run: |
@@ -142,21 +83,15 @@ jobs:
             "system-images;android-35;google_apis;x86_64"
 
           IMAGE="$ANDROID_HOME/system-images/android-35/google_apis/x86_64"
-
-          if [ ! -d "$IMAGE" ]; then
+          test -d "$IMAGE" || {
             echo "Android x86_64 image missing"
             exit 1
-          fi
+          }
 
-          echo "Android image installed"
-
-      # 6. Check architecture and dependencies
       - name: Check Emulator Libraries
         shell: bash
         run: |
           set -e
-
-          mkdir -p "$RUNNER_TEMP/cloud-android"
 
           echo "Runner architecture:"
           uname -m
@@ -171,34 +106,45 @@ jobs:
 
           for BIN in "$EMULATOR" "$QEMU"; do
             echo "Checking $BIN"
-
-            if [ ! -x "$BIN" ]; then
+            test -x "$BIN" || {
               echo "Executable not found"
               exit 1
-            fi
-
+            }
             ldd "$BIN" || true
           done | tee "$RUNNER_TEMP/cloud-android/dependencies.log"
 
-          echo "Missing libraries, if any:"
-          grep "not found" \
-            "$RUNNER_TEMP/cloud-android/dependencies.log" || true
+          echo "Missing libraries:"
+          grep "not found" "$RUNNER_TEMP/cloud-android/dependencies.log" || true
 
-          echo "Dependency inspection completed"
-
-      # 7. Create one Android virtual device
+      # FIXED: Explicit AVD directory and verified config location
       - name: Create Android Phone
         shell: bash
         run: |
           set -e
 
-          echo "no" | "$AVDMANAGER" create avd \
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+
+          echo "Creating CloudPhone..."
+
+          printf 'no\n' | "$AVDMANAGER" create avd \
             --force \
             -n CloudPhone \
             -k "system-images;android-35;google_apis;x86_64" \
             -d pixel_2
 
-          CONFIG="$HOME/.android/avd/CloudPhone.avd/config.ini"
+          echo "Available virtual devices:"
+          "$AVDMANAGER" list avd
+
+          CONFIG="$ANDROID_AVD_HOME/CloudPhone.avd/config.ini"
+
+          if [ ! -f "$CONFIG" ]; then
+            echo "ERROR: CloudPhone config.ini was not created."
+            echo "Searching for AVD files..."
+            find "$HOME/.android" -maxdepth 5 -type f -print || true
+            exit 1
+          fi
 
           echo "AVD configuration:"
           cat "$CONFIG"
@@ -208,9 +154,8 @@ jobs:
             exit 1
           fi
 
-          echo "CloudPhone created"
+          echo "CloudPhone created successfully"
 
-      # 8. Start virtual display
       - name: Start Virtual Display
         shell: bash
         run: |
@@ -223,7 +168,6 @@ jobs:
 
           sleep 3
 
-      # 9. Start Android emulator
       - name: Start Android Emulator
         shell: bash
         run: |
@@ -241,19 +185,15 @@ jobs:
             > "$RUNNER_TEMP/cloud-android/emulator.log" 2>&1 \
             < /dev/null &
 
-          echo "Emulator launched"
           sleep 10
-
           cat "$RUNNER_TEMP/cloud-android/emulator.log"
 
-      # 10. Wait for Android
       - name: Wait for Android Boot
         shell: bash
         run: |
           set -e
 
           adb start-server
-
           CONNECTED=0
 
           for i in {1..60}; do
@@ -261,7 +201,6 @@ jobs:
               CONNECTED=1
               break
             fi
-
             echo "Waiting for Android: $i/60"
             sleep 5
           done
@@ -275,14 +214,11 @@ jobs:
           BOOT=0
 
           for i in {1..60}; do
-            VALUE=$(adb -s emulator-5554 shell \
-              getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-
+            VALUE=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
             if [ "$VALUE" = "1" ]; then
               BOOT=1
               break
             fi
-
             echo "Waiting for Android boot: $i/60"
             sleep 5
           done
@@ -295,22 +231,17 @@ jobs:
 
           echo "Android boot completed"
 
-      # 11. Check Android
       - name: Verify Android
         shell: bash
         run: |
           set -e
-
           echo "Android version:"
           adb shell getprop ro.build.version.release
-
           echo "Android model:"
           adb shell getprop ro.product.model
-
           echo "Android display:"
           adb shell wm size
 
-      # 12. Start VNC and noVNC
       - name: Start Remote Screen
         shell: bash
         run: |
@@ -334,12 +265,10 @@ jobs:
             > "$RUNNER_TEMP/cloud-android/websockify.log" 2>&1 &
 
           sleep 3
-
           curl -f http://127.0.0.1:6080/vnc.html
 
           echo "Remote screen started"
 
-      # 13. Connect Tailscale
       - name: Connect Tailscale
         env:
           TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
@@ -360,25 +289,18 @@ jobs:
             --accept-dns=false
 
           sudo tailscale serve --bg 6080
-
           sudo tailscale status
           sudo tailscale serve status
 
-      # 14. Verify remote services
       - name: Verify Cloud Android
         shell: bash
         run: |
           set -e
-
           adb devices
-
           curl -f http://127.0.0.1:6080/vnc.html
-
           sudo tailscale serve status
-
           echo "Cloud Android services started"
 
-      # 15. Keep session running
       - name: Keep Cloud Phone Running
         shell: bash
         run: |
@@ -387,7 +309,6 @@ jobs:
             sleep 300
           done
 
-      # 16. Upload logs
       - name: Upload Diagnostic Logs
         if: always()
         uses: actions/upload-artifact@v4
