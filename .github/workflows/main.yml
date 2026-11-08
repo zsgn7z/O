@@ -17,8 +17,10 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Accept Android SDK Licenses
+        shell: bash
         run: |
-          yes | sdkmanager --licenses || true
+          set -o pipefail
+          yes | sdkmanager --licenses
 
       - name: Install Android Components
         run: |
@@ -54,10 +56,12 @@ jobs:
           BOOT=""
           for i in {1..60}; do
             BOOT=$(adb shell getprop sys.boot_completed | tr -d '\r')
+
             if [ "$BOOT" = "1" ]; then
               echo "Android started successfully"
               break
             fi
+
             sleep 5
           done
 
@@ -78,7 +82,7 @@ jobs:
       - name: Keep Android Running
         run: |
           for i in {1..65}; do
-            echo "Android is running - $i"
+            echo "Android running - $i"
             adb shell getprop sys.boot_completed
             sleep 300
           done
